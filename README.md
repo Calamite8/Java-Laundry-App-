@@ -12,7 +12,7 @@ A: nasa LaundrySystem > target > start.bat
 A: Naka shut down yung PC ni Vince
 5. Diba Java lang ang na include nyo sa presentation? bakit may web redirection?
 A: it is an implementation of a Server-Side Rendering (SSR) function or Java-in-HTML string concatenation, technically it is still in java.
-6. Ano yung QR scanner na dapat gamitin?
+6. Anong QR scanner ang na dapat gamitin?
 A: Google Lens or any scanner in playstore
 --------------------------------------------------------------------------------------------------------------------------------------------
 
