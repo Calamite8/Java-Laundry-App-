@@ -5,7 +5,7 @@ Pass: admin11
 
 
 1. Asan yung file?
-A: nasa LaundrySystem > target > start.bat
+A: nasa LaundrySystem > target > LaundrySystem-1.0-SNAPSHOT-jar-with-dependencies.jar // start.bat
 2. Pag tapos mag log in, Kapag Matagal mag loading ng Dashboard, nag hahanap lang yan ng mySQL database sa Local machine, hintayin nyo.
 3. Pag lumabas na yung main dashboard punta ka sa settings at enable mo yung Disable mySQL (For Testing) at save data locally to a file (Kapag walang mySQL workbench ang local machine).
 4. Bakit di makita yung status at claim status?
