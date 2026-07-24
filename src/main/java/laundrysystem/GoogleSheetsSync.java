@@ -1,4 +1,4 @@
-// Deprecated & Dead Code, Can be used but required google auth
+
 
 package laundrysystem;
 
@@ -18,7 +18,15 @@ import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.List;
 
+// ----------------------------------------
+/* Deprecated & Dead Code, Requires: google-api-client, google-auth-library-oauth2-http, google-api-services-sheets on the classpath
+ (see the QR claim system guide, Part 2 and Part 3).
+*/ 
+
+
 /**
+
+
  * Appends a row to a Google Sheet every time an order is claimed, acting
  * as a simple backup ledger alongside MySQL.
  *
