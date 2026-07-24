@@ -157,3 +157,4 @@ customer.
 - Consider rate-limiting or requiring staff login before the Claim tab
   is usable, so a customer with just the QR photo can't self-claim
   early.
+- Google Sheets Syncing is now Dead code
