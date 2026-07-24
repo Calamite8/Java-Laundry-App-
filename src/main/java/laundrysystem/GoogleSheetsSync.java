@@ -1,4 +1,4 @@
-// Deprecated & Dead Code
+// Deprecated & Dead Code, Can be used but required google auth
 
 package laundrysystem;
 
