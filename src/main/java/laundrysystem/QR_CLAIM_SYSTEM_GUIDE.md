@@ -75,7 +75,7 @@ manually and add them via Project Properties → Libraries → Add JAR:
 
 ---
 
-## Part 3 — Google Sheets setup (do this once)
+## Part 3 — Google Sheets setup (NOTICE: Deprecated)
 
 1. Go to https://console.cloud.google.com → create or select a project.
 2. APIs & Services → Library → search "Google Sheets API" → Enable.
