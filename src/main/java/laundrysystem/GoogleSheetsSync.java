@@ -1,4 +1,4 @@
-// Deprecated
+// Deprecated & Dead Code
 
 package laundrysystem;
 
