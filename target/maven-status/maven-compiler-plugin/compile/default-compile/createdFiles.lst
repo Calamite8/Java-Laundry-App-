@@ -11,6 +11,7 @@ laundrysystem\Customer.class
 laundrysystem\SignUp$3.class
 laundrysystem\StatusServer.class
 laundrysystem\MainDashboard$5.class
+laundrysystem\Order$LineItem.class
 laundrysystem\DatabaseManager.class
 laundrysystem\SignUp.class
 laundrysystem\StatusServer$ClaimHandler.class
@@ -19,6 +20,7 @@ laundrysystem\Login$4.class
 laundrysystem\GoogleSheetsSync.class
 laundrysystem\SignUp$5.class
 laundrysystem\MainDashboard$2.class
+laundrysystem\StatusServer$LogoHandler.class
 laundrysystem\Main.class
 laundrysystem\SignUp$2.class
 laundrysystem\MainDashboard$4.class

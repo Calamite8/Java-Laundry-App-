@@ -36,12 +36,17 @@ public class DataStore {
     }
 
     public static Order addOrder(Customer customer, String serviceType, double quantity, LocalDate date) {
-        return addOrder(customer, serviceType, quantity, date, false);
+        return addOrder(customer, serviceType, quantity, date, false, false);
     }
 
     public static Order addOrder(Customer customer, String serviceType, double quantity, LocalDate date,
                                   boolean includeSoap) {
-        Order o = new Order(orderIdCounter++, customer, serviceType, quantity, date, includeSoap);
+        return addOrder(customer, serviceType, quantity, date, includeSoap, false);
+    }
+
+    public static Order addOrder(Customer customer, String serviceType, double quantity, LocalDate date,
+                                  boolean includeSoap, boolean includeDetergent) {
+        Order o = new Order(orderIdCounter++, customer, serviceType, quantity, date, includeSoap, includeDetergent);
         orders.add(o);
         return o;
     }

@@ -40,6 +40,8 @@ import java.nio.charset.StandardCharsets;
 public class StatusServer {
 
     private static final int PORT = 8080;
+    private static final java.time.format.DateTimeFormatter DATE_FMT =
+            java.time.format.DateTimeFormatter.ofPattern("MMM dd, yyyy");
 
     // CHANGE THIS to your shop's actual reachable address before printing
     // QR codes for real customers -- see the class comment above.
@@ -70,6 +72,7 @@ public class StatusServer {
             server = HttpServer.create(new InetSocketAddress(PORT), 0);
             server.createContext("/status", new StatusHandler());
             server.createContext("/claim", new ClaimHandler());
+            server.createContext("/logo", new LogoHandler());
             server.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(4));
             server.start();
             System.out.println("Status server running at " + BASE_URL + "/status?token=...");
@@ -150,24 +153,53 @@ public class StatusServer {
 
         private static String renderStatus(DatabaseManager.OrderRecord order) {
             String claimedNote = order.claimed
-                    ? "<p style=\"color:#27ae60;\">This order has been picked up.</p>"
+                    ? "<p style=\"color:#27ae60;font-weight:bold;\">This order has been picked up.</p>"
                     : "";
+
+            StringBuilder itemsHtml = new StringBuilder();
+            int i = 1;
+            for (Order.LineItem item : order.getLineItems()) {
+                itemsHtml.append("<tr><td>").append(i++).append(". ").append(escape(item.name))
+                        .append(" (").append(escape(item.quantityDisplay)).append(")</td>")
+                        .append("<td style='text-align:right'>\u20B1")
+                        .append(String.format("%.2f", item.price)).append("</td></tr>");
+            }
+
+            String logoHtml = PricingConfig.getLogoPath().isBlank()
+                    ? ""
+                    : "<img src='/logo' style='max-width:70px;max-height:70px;display:block;margin:0 auto 8px;'>";
+
             return "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
                     + "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-                    + "<title>Order Status</title>"
-                    + "<style>body{font-family:sans-serif;max-width:420px;margin:40px auto;padding:0 20px;color:#333;}"
-                    + "h1{font-size:20px;} .status{font-size:28px;font-weight:bold;color:#2980b9;margin:10px 0;}"
-                    + "table{width:100%;border-collapse:collapse;margin-top:15px;}"
-                    + "td{padding:8px 0;border-bottom:1px solid #eee;} td:first-child{color:#888;}</style>"
+                    + "<title>Digital Receipt</title>"
+                    + "<style>"
+                    + "body{font-family:sans-serif;max-width:380px;margin:30px auto;padding:0 20px;"
+                    + "color:#333;background:#faf6f0;}"
+                    + "h1{font-size:18px;text-align:center;margin:4px 0 16px;}"
+                    + "table{width:100%;border-collapse:collapse;font-size:13px;}"
+                    + "hr{border:none;border-top:1px solid #ddd;margin:12px 0;}"
+                    + ".total-row td{font-weight:bold;font-size:15px;padding-top:6px;}"
+                    + "</style>"
                     + "</head><body>"
-                    + "<h1>Order #" + order.id + "</h1>"
-                    + "<div class=\"status\">" + escape(order.status) + "</div>"
+                    + logoHtml
+                    + "<h1>" + escape(PricingConfig.getLaundryName()) + "</h1>"
+                    + "<table><tr>"
+                    + "<td><b>STATUS:</b> " + escape(order.status) + "</td>"
+                    + "<td style='text-align:right'><b>DROPOFF:</b> " + order.dropOffDate.format(DATE_FMT) + "</td>"
+                    + "</tr><tr><td></td><td style='text-align:right'><b>CLAIM BY:</b> "
+                    + order.claimByDate.format(DATE_FMT) + "</td></tr></table>"
                     + claimedNote
-                    + "<table>"
-                    + "<tr><td>Customer</td><td>" + escape(order.customerName) + "</td></tr>"
-                    + "<tr><td>Service</td><td>" + escape(order.serviceType) + "</td></tr>"
-                    + "<tr><td>Total</td><td>\u20B1" + String.format("%.2f", order.price) + "</td></tr>"
-                    + "</table>"
+                    + "<hr>"
+                    + "<b>USER:</b> " + escape(order.customerName) + "<br>"
+                    + "<b>CONTACT:</b> " + escape(order.customerPhone.isBlank() ? "-" : order.customerPhone) + "<br>"
+                    + "<b>ADDRESS:</b> " + escape(order.customerAddress.isBlank() ? "-" : order.customerAddress)
+                    + "<hr>"
+                    + "<b>ORDER DETAILS</b>"
+                    + "<table>" + itemsHtml + "</table>"
+                    + "<hr>"
+                    + "<table><tr class='total-row'><td>ESTIMATED TOTAL</td>"
+                    + "<td style='text-align:right'>\u20B1" + String.format("%.2f", order.price) + "</td></tr></table>"
+                    + "<p style='text-align:center;color:#999;font-size:11px;margin-top:20px;'>Order #" + order.id + "</p>"
                     + "</body></html>";
         }
     }
@@ -226,6 +258,43 @@ public class StatusServer {
                     + "<p>" + escape(message) + "</p>"
                     + "<p>Order #" + order.id + " -- " + escape(order.customerName) + "</p>"
                     + "</body></html>";
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // /logo -- serves the receipt logo image configured in Settings, so
+    // the web receipt can <img src="/logo">. No token needed -- it's the
+    // same logo for every order.
+    // -----------------------------------------------------------------
+    private static class LogoHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            String path = PricingConfig.getLogoPath();
+            if (path.isBlank()) {
+                exchange.sendResponseHeaders(404, -1);
+                exchange.close();
+                return;
+            }
+
+            java.io.File file = new java.io.File(path);
+            if (!file.exists()) {
+                exchange.sendResponseHeaders(404, -1);
+                exchange.close();
+                return;
+            }
+
+            String lower = path.toLowerCase();
+            String contentType = lower.endsWith(".png") ? "image/png"
+                    : (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) ? "image/jpeg"
+                    : "application/octet-stream";
+
+            byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
+            exchange.getResponseHeaders().set("Content-Type", contentType);
+            exchange.getResponseHeaders().set("Connection", "close");
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(bytes);
+            }
         }
     }
 

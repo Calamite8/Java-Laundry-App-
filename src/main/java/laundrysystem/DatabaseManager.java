@@ -240,25 +240,38 @@ public class DatabaseManager {
 
     /**
      * Inserts a new order row and returns the generated order id, or -1 on failure.
+     * claimByDate is computed automatically from today + PricingConfig's
+     * claim window (editable in Settings) at the moment of creation.
      */
-    public static int insertOrder(String customerName, String serviceType,
-                                   double quantity, double price, String claimToken) {
+    public static int insertOrder(String customerName, String customerPhone, String customerAddress,
+                                   String serviceType, double quantity, double price, String claimToken,
+                                   boolean includeSoap, boolean includeDetergent) {
+        LocalDate dropOffDate = LocalDate.now();
+        LocalDate claimByDate = dropOffDate.plusDays(PricingConfig.getClaimWindowDays());
+
         if (!mysqlEnabled) {
             int fakeId = fakeIdCounter++;
-            fakeStore.put(fakeId, new OrderRecord(fakeId, customerName, serviceType,
-                    quantity, price, "Pending", false, claimToken));
+            fakeStore.put(fakeId, new OrderRecord(fakeId, customerName, customerPhone, customerAddress,
+                    serviceType, quantity, price, "Pending", false, claimToken,
+                    dropOffDate, claimByDate, includeSoap, includeDetergent));
             saveLocalStoreIfEnabled();
             return fakeId;
         }
 
-        String sql = "INSERT INTO orders (customer_name, service_type, quantity, price, claim_token) "
-                + "VALUES (?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO orders (customer_name, customer_phone, customer_address, service_type, "
+                + "quantity, price, claim_token, claim_by_date, include_soap, include_detergent) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = getConnection().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, customerName);
-            ps.setString(2, serviceType);
-            ps.setDouble(3, quantity);
-            ps.setDouble(4, price);
-            ps.setString(5, claimToken);
+            ps.setString(2, customerPhone);
+            ps.setString(3, customerAddress);
+            ps.setString(4, serviceType);
+            ps.setDouble(5, quantity);
+            ps.setDouble(6, price);
+            ps.setString(7, claimToken);
+            ps.setDate(8, java.sql.Date.valueOf(claimByDate));
+            ps.setBoolean(9, includeSoap);
+            ps.setBoolean(10, includeDetergent);
             ps.executeUpdate();
 
             try (ResultSet keys = ps.getGeneratedKeys()) {
@@ -293,7 +306,8 @@ public class DatabaseManager {
             return; // pure in-memory testing mode -- nothing on disk to load
         }
 
-        String sql = "SELECT id, customer_name, service_type, quantity, status, created_at FROM orders ORDER BY id";
+        String sql = "SELECT id, customer_name, customer_phone, customer_address, service_type, quantity, "
+                + "status, created_at, include_soap, include_detergent FROM orders ORDER BY id";
         try (PreparedStatement ps = getConnection().prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
 
@@ -303,7 +317,8 @@ public class DatabaseManager {
                     continue; // already loaded -- don't duplicate
                 }
 
-                Customer customer = findOrCreateCustomerByName(rs.getString("customer_name"));
+                Customer customer = findOrCreateCustomerByName(rs.getString("customer_name"),
+                        rs.getString("customer_phone"), rs.getString("customer_address"));
 
                 Timestamp createdTs = rs.getTimestamp("created_at");
                 LocalDate dropOffDate = (createdTs != null)
@@ -311,7 +326,8 @@ public class DatabaseManager {
                         : LocalDate.now();
 
                 Order order = DataStore.addOrder(customer, rs.getString("service_type"),
-                        rs.getDouble("quantity"), dropOffDate);
+                        rs.getDouble("quantity"), dropOffDate,
+                        rs.getBoolean("include_soap"), rs.getBoolean("include_detergent"));
                 order.setDbId(dbOrderId);
                 order.setStatus(rs.getString("status"));
             }
@@ -336,20 +352,22 @@ public class DatabaseManager {
             if (DataStore.findOrderById(r.id) != null) {
                 continue; // already loaded -- don't duplicate
             }
-            Customer customer = findOrCreateCustomerByName(r.customerName);
-            Order order = DataStore.addOrder(customer, r.serviceType, r.quantity, LocalDate.now());
+            Customer customer = findOrCreateCustomerByName(r.customerName, r.customerPhone, r.customerAddress);
+            Order order = DataStore.addOrder(customer, r.serviceType, r.quantity,
+                    r.dropOffDate != null ? r.dropOffDate : LocalDate.now(),
+                    r.includeSoap, r.includeDetergent);
             order.setDbId(r.id);
             order.setStatus(r.status);
         }
     }
 
-    private static Customer findOrCreateCustomerByName(String name) {
+    private static Customer findOrCreateCustomerByName(String name, String phone, String address) {
         for (Customer c : DataStore.getCustomers()) {
             if (c.getName().equals(name)) {
                 return c;
             }
         }
-        return DataStore.addCustomer(name, "", "");
+        return DataStore.addCustomer(name, phone == null ? "" : phone, address == null ? "" : address);
     }
 
     /**
@@ -361,22 +379,14 @@ public class DatabaseManager {
             return fakeStore.get(orderId);
         }
 
-        String sql = "SELECT id, customer_name, service_type, quantity, price, status, claimed, claim_token "
+        String sql = "SELECT id, customer_name, customer_phone, customer_address, service_type, quantity, "
+                + "price, status, claimed, claim_token, created_at, claim_by_date, include_soap, include_detergent "
                 + "FROM orders WHERE id = ?";
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
             ps.setInt(1, orderId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    return new OrderRecord(
-                            rs.getInt("id"),
-                            rs.getString("customer_name"),
-                            rs.getString("service_type"),
-                            rs.getDouble("quantity"),
-                            rs.getDouble("price"),
-                            rs.getString("status"),
-                            rs.getBoolean("claimed"),
-                            rs.getString("claim_token")
-                    );
+                    return recordFromResultSet(rs);
                 }
             }
         } catch (SQLException e) {
@@ -398,28 +408,46 @@ public class DatabaseManager {
             return null;
         }
 
-        String sql = "SELECT id, customer_name, service_type, quantity, price, status, claimed, claim_token "
+        String sql = "SELECT id, customer_name, customer_phone, customer_address, service_type, quantity, "
+                + "price, status, claimed, claim_token, created_at, claim_by_date, include_soap, include_detergent "
                 + "FROM orders WHERE claim_token = ?";
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
             ps.setString(1, token);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    return new OrderRecord(
-                            rs.getInt("id"),
-                            rs.getString("customer_name"),
-                            rs.getString("service_type"),
-                            rs.getDouble("quantity"),
-                            rs.getDouble("price"),
-                            rs.getString("status"),
-                            rs.getBoolean("claimed"),
-                            rs.getString("claim_token")
-                    );
+                    return recordFromResultSet(rs);
                 }
             }
         } catch (SQLException e) {
             System.err.println("findByToken failed: " + e.getMessage());
         }
         return null;
+    }
+
+    /** Shared row -> OrderRecord mapping for findById/findByToken, so both stay in sync. */
+    private static OrderRecord recordFromResultSet(ResultSet rs) throws SQLException {
+        Timestamp createdTs = rs.getTimestamp("created_at");
+        LocalDate dropOffDate = (createdTs != null) ? createdTs.toLocalDateTime().toLocalDate() : LocalDate.now();
+        java.sql.Date claimByDate = rs.getDate("claim_by_date");
+        LocalDate claimBy = (claimByDate != null) ? claimByDate.toLocalDate()
+                : dropOffDate.plusDays(PricingConfig.getClaimWindowDays());
+
+        return new OrderRecord(
+                rs.getInt("id"),
+                rs.getString("customer_name"),
+                rs.getString("customer_phone"),
+                rs.getString("customer_address"),
+                rs.getString("service_type"),
+                rs.getDouble("quantity"),
+                rs.getDouble("price"),
+                rs.getString("status"),
+                rs.getBoolean("claimed"),
+                rs.getString("claim_token"),
+                dropOffDate,
+                claimBy,
+                rs.getBoolean("include_soap"),
+                rs.getBoolean("include_detergent")
+        );
     }
 
     /**
@@ -433,8 +461,9 @@ public class DatabaseManager {
         if (!mysqlEnabled) {
             OrderRecord r = fakeStore.get(orderId);
             if (r == null) return false;
-            fakeStore.put(orderId, new OrderRecord(r.id, customerName, serviceType,
-                    quantity, price, r.status, r.claimed, r.claimToken));
+            fakeStore.put(orderId, new OrderRecord(r.id, customerName, r.customerPhone, r.customerAddress,
+                    serviceType, quantity, price, r.status, r.claimed, r.claimToken,
+                    r.dropOffDate, r.claimByDate, r.includeSoap, r.includeDetergent));
             saveLocalStoreIfEnabled();
             return true;
         }
@@ -464,8 +493,9 @@ public class DatabaseManager {
         if (!mysqlEnabled) {
             OrderRecord r = fakeStore.get(orderId);
             if (r == null) return false;
-            fakeStore.put(orderId, new OrderRecord(r.id, r.customerName, r.serviceType,
-                    r.quantity, r.price, status, r.claimed, r.claimToken));
+            fakeStore.put(orderId, new OrderRecord(r.id, r.customerName, r.customerPhone, r.customerAddress,
+                    r.serviceType, r.quantity, r.price, status, r.claimed, r.claimToken,
+                    r.dropOffDate, r.claimByDate, r.includeSoap, r.includeDetergent));
             saveLocalStoreIfEnabled();
             return true;
         }
@@ -489,8 +519,9 @@ public class DatabaseManager {
         if (!mysqlEnabled) {
             OrderRecord r = fakeStore.get(orderId);
             if (r == null || r.claimed) return false;
-            fakeStore.put(orderId, new OrderRecord(r.id, r.customerName, r.serviceType,
-                    r.quantity, r.price, "Delivered", true, r.claimToken));
+            fakeStore.put(orderId, new OrderRecord(r.id, r.customerName, r.customerPhone, r.customerAddress,
+                    r.serviceType, r.quantity, r.price, "Delivered", true, r.claimToken,
+                    r.dropOffDate, r.claimByDate, r.includeSoap, r.includeDetergent));
             saveLocalStoreIfEnabled();
             return true;
         }
@@ -538,30 +569,62 @@ public class DatabaseManager {
     }
 
     /**
-     * Simple read-only snapshot of an orders row, used by ClaimPanel.
+     * Simple read-only snapshot of an orders row, used by ClaimPanel and
+     * the receipt (both the desktop dialog and the web status page).
      */
     public static class OrderRecord implements Serializable {
-        private static final long serialVersionUID = 1L;
+        private static final long serialVersionUID = 2L;
         public final int id;
         public final String customerName;
+        public final String customerPhone;
+        public final String customerAddress;
         public final String serviceType;
         public final double quantity;
         public final double price;
         public final String status;
         public final boolean claimed;
         public final String claimToken;
+        public final LocalDate dropOffDate;
+        public final LocalDate claimByDate;
+        public final boolean includeSoap;
+        public final boolean includeDetergent;
 
-        public OrderRecord(int id, String customerName, String serviceType,
-                            double quantity, double price, String status, boolean claimed,
-                            String claimToken) {
+        public OrderRecord(int id, String customerName, String customerPhone, String customerAddress,
+                            String serviceType, double quantity, double price, String status, boolean claimed,
+                            String claimToken, LocalDate dropOffDate, LocalDate claimByDate,
+                            boolean includeSoap, boolean includeDetergent) {
             this.id = id;
             this.customerName = customerName;
+            this.customerPhone = customerPhone;
+            this.customerAddress = customerAddress;
             this.serviceType = serviceType;
             this.quantity = quantity;
             this.price = price;
             this.status = status;
             this.claimed = claimed;
             this.claimToken = claimToken;
+            this.dropOffDate = dropOffDate;
+            this.claimByDate = claimByDate;
+            this.includeSoap = includeSoap;
+            this.includeDetergent = includeDetergent;
+        }
+
+        /**
+         * The itemized breakdown for the receipt -- mirrors Order.getLineItems()
+         * so the desktop dialog and the web status page show identical rows.
+         */
+        public java.util.List<Order.LineItem> getLineItems() {
+            java.util.List<Order.LineItem> lines = new java.util.ArrayList<>();
+            double serviceOnlyPrice = quantity * PricingConfig.getRate(serviceType);
+            String unit = serviceType.equals("Wash & Fold") ? "kg" : "qty";
+            lines.add(new Order.LineItem(serviceType, quantity + " " + unit, serviceOnlyPrice));
+            if (includeSoap) {
+                lines.add(new Order.LineItem("Soap", "1 qty", PricingConfig.getSoapFee()));
+            }
+            if (includeDetergent) {
+                lines.add(new Order.LineItem("Detergent", "1 qty", PricingConfig.getDetergentFee()));
+            }
+            return lines;
         }
     }
 }

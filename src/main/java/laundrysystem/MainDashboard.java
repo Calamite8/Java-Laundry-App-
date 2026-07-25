@@ -5,6 +5,7 @@ import java.awt.event.ActionEvent;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.TableModelEvent;
@@ -46,6 +47,7 @@ public class MainDashboard extends javax.swing.JFrame {
     private JComboBox<String> serviceCombo;
     private JSpinner quantitySpinner;
     private JCheckBox includeSoapCheck;
+    private JCheckBox includeDetergentCheck;
     private JComboBox<String> itemTypeCombo;
     private JLabel quantityHintLabel;
     private JLabel priceEstimateLabel;
@@ -262,7 +264,9 @@ public class MainDashboard extends javax.swing.JFrame {
                         "Not Found", JOptionPane.WARNING_MESSAGE);
                 return;
             }
-            showQrDialog(StatusServer.buildStatusUrl(record.claimToken), record.id, record.customerName);
+            showReceiptDialog(record.id, record.customerName, record.customerPhone, record.customerAddress,
+                    record.status, record.dropOffDate, record.claimByDate, record.getLineItems(), record.price,
+                    StatusServer.buildStatusUrl(record.claimToken));
         });
         card.add(generateBtn);
 
@@ -274,20 +278,90 @@ public class MainDashboard extends javax.swing.JFrame {
      * status-page URL), with an option to save it as a PNG for printing.
      * Shared by order creation and the Dashboard's Generate/Reprint tool.
      */
-    private void showQrDialog(String qrContent, int orderId, String customerName) {
+    /**
+     * Shows the full digital receipt (matching the LOGO / LAUNDRY NAME /
+     * status / dropoff+claim dates / customer info / itemized order details
+     * / estimated total / QR code layout), with an option to save the QR
+     * as a PNG. The exact same content is rendered on the web status page
+     * (see StatusServer.renderStatus), just as HTML instead of Swing.
+     */
+    private void showReceiptDialog(int orderId, String customerName, String customerPhone, String customerAddress,
+                                    String status, LocalDate dropOffDate, LocalDate claimByDate,
+                                    List<Order.LineItem> lineItems, double totalPrice, String qrContent) {
         try {
+            JPanel outer = new JPanel();
+            outer.setLayout(new BoxLayout(outer, BoxLayout.Y_AXIS));
+            outer.setBackground(new Color(250, 246, 240));
+            outer.setBorder(new EmptyBorder(20, 24, 20, 24));
+
+            // Logo + laundry name
+            String logoPath = PricingConfig.getLogoPath();
+            if (!logoPath.isBlank()) {
+                try {
+                    java.awt.Image logoImg = ImageIO.read(new java.io.File(logoPath));
+                    if (logoImg != null) {
+                        Image scaled = logoImg.getScaledInstance(60, 60, Image.SCALE_SMOOTH);
+                        JLabel logoLabel = new JLabel(new ImageIcon(scaled));
+                        logoLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+                        outer.add(logoLabel);
+                        outer.add(Box.createVerticalStrut(6));
+                    }
+                } catch (Exception ignored) {
+                    // bad/missing logo file -- just skip it, rest of the receipt still renders
+                }
+            }
+
+            JLabel nameLabel = new JLabel(PricingConfig.getLaundryName());
+            nameLabel.setFont(new Font("SansSerif", Font.BOLD, 18));
+            nameLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+            outer.add(nameLabel);
+            outer.add(Box.createVerticalStrut(14));
+
+            // Status / Dropoff / Claim
+            StringBuilder html = new StringBuilder("<html><body style='width:320px;font-family:sans-serif;font-size:12px;'>");
+            html.append("<table width='100%'><tr>")
+                    .append("<td><b>STATUS:</b> ").append(escapeHtml(status)).append("</td>")
+                    .append("<td align='right'><b>DROPOFF:</b> ").append(dropOffDate.format(DATE_FMT)).append("</td>")
+                    .append("</tr><tr><td></td><td align='right'><b>CLAIM BY:</b> ")
+                    .append(claimByDate.format(DATE_FMT)).append("</td></tr></table>")
+                    .append("<hr>")
+                    .append("<b>USER:</b> ").append(escapeHtml(customerName)).append("<br>")
+                    .append("<b>CONTACT:</b> ").append(escapeHtml(customerPhone.isBlank() ? "-" : customerPhone)).append("<br>")
+                    .append("<b>ADDRESS:</b> ").append(escapeHtml(customerAddress.isBlank() ? "-" : customerAddress))
+                    .append("<hr>")
+                    .append("<b>ORDER DETAILS</b><table width='100%'>");
+
+            int i = 1;
+            for (Order.LineItem item : lineItems) {
+                html.append("<tr><td>").append(i++).append(". ").append(escapeHtml(item.name))
+                        .append(" (").append(item.quantityDisplay).append(")</td>")
+                        .append("<td align='right'>\u20B1").append(String.format("%.2f", item.price)).append("</td></tr>");
+            }
+            html.append("</table><hr>")
+                    .append("<table width='100%'><tr><td><b>ESTIMATED TOTAL</b></td>")
+                    .append("<td align='right'><b>\u20B1").append(String.format("%.2f", totalPrice)).append("</b></td></tr></table>")
+                    .append("</body></html>");
+
+            JLabel receiptLabel = new JLabel(html.toString());
+            receiptLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+            outer.add(receiptLabel);
+            outer.add(Box.createVerticalStrut(16));
+
             java.awt.image.BufferedImage qrImage = QRCodeUtil.generate(qrContent);
+            JLabel qrLabel = new JLabel(new ImageIcon(qrImage));
+            qrLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+            outer.add(qrLabel);
 
-            JPanel panel = new JPanel(new BorderLayout(10, 10));
-            JLabel info = new JLabel("<html>Order #" + orderId + " for " + customerName
-                    + "<br>Scanning this QR code opens the order's status page.<br>"
-                    + "Give it to the customer, or use it in the Claim tab at pickup.</html>");
-            panel.add(info, BorderLayout.NORTH);
-            panel.add(new JLabel(new ImageIcon(qrImage)), BorderLayout.CENTER);
+            JLabel orderIdLabel = new JLabel("Order #" + orderId);
+            orderIdLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
+            orderIdLabel.setForeground(new Color(140, 140, 140));
+            orderIdLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+            outer.add(Box.createVerticalStrut(6));
+            outer.add(orderIdLabel);
 
-            int result = JOptionPane.showOptionDialog(this, panel, "QR Code",
+            int result = JOptionPane.showOptionDialog(this, outer, "Digital Receipt",
                     JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null,
-                    new Object[]{"Save as PNG", "Close"}, "Close");
+                    new Object[]{"Save QR as PNG", "Close"}, "Close");
 
             if (result == 0) {
                 JFileChooser chooser = new JFileChooser();
@@ -298,9 +372,13 @@ public class MainDashboard extends javax.swing.JFrame {
             }
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this,
-                    "Couldn't generate the QR code: " + ex.getMessage(),
-                    "QR Generation Error", JOptionPane.WARNING_MESSAGE);
+                    "Couldn't generate the receipt: " + ex.getMessage(),
+                    "Receipt Generation Error", JOptionPane.WARNING_MESSAGE);
         }
+    }
+
+    private static String escapeHtml(String s) {
+        return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     private JPanel createStatCard(String title, JLabel valueLabel, Color color) {
@@ -454,37 +532,46 @@ public class MainDashboard extends javax.swing.JFrame {
         includeSoapCheck.addActionListener(e -> updatePriceEstimate());
         form.add(includeSoapCheck, gbc);
 
-        // Item type (staff-defined catalog, e.g. Clothes/Hat/Undergarments -- optional)
+        // Detergent add-on
         gbc.gridy = 7;
+        includeDetergentCheck = new JCheckBox("Include Detergent (+\u20B1"
+                + String.format("%.2f", PricingConfig.getDetergentFee()) + ")");
+        includeDetergentCheck.setFont(labelFont);
+        includeDetergentCheck.setBackground(Color.WHITE);
+        includeDetergentCheck.addActionListener(e -> updatePriceEstimate());
+        form.add(includeDetergentCheck, gbc);
+
+        // Item type (staff-defined catalog, e.g. Clothes/Hat/Undergarments -- optional)
+        gbc.gridy = 8;
         JLabel itemTypeLbl = new JLabel("Item Type (optional):");
         itemTypeLbl.setFont(labelFont);
         form.add(itemTypeLbl, gbc);
 
-        gbc.gridy = 8;
+        gbc.gridy = 9;
         itemTypeCombo = new JComboBox<>();
         refreshItemTypeCombo();
         form.add(itemTypeCombo, gbc);
 
         // Drop-off date (today, fixed)
-        gbc.gridy = 9;
+        gbc.gridy = 10;
         JLabel dateLbl = new JLabel("Drop-off Date: " + LocalDate.now().format(DATE_FMT));
         dateLbl.setFont(labelFont);
         form.add(dateLbl, gbc);
 
         // Price estimate
-        gbc.gridy = 10;
+        gbc.gridy = 11;
         JLabel priceLbl = new JLabel("Estimated Total:");
         priceLbl.setFont(new Font("SansSerif", Font.BOLD, 14));
         form.add(priceLbl, gbc);
 
-        gbc.gridy = 11;
+        gbc.gridy = 12;
         priceEstimateLabel = new JLabel();
         priceEstimateLabel.setFont(new Font("SansSerif", Font.BOLD, 20));
         priceEstimateLabel.setForeground(new Color(39, 174, 96));
         form.add(priceEstimateLabel, gbc);
 
         // Submit
-        gbc.gridy = 12;
+        gbc.gridy = 13;
         JButton submitBtn = new JButton("Create Order");
         submitBtn.setBackground(PRIMARY);
         submitBtn.setForeground(Color.WHITE);
@@ -603,7 +690,8 @@ public class MainDashboard extends javax.swing.JFrame {
         String unit = service.equals("Wash & Fold") ? "kilos" : "items";
         quantityHintLabel.setText("(" + unit + ")");
         double total = qty * rate
-                + (includeSoapCheck != null && includeSoapCheck.isSelected() ? PricingConfig.getSoapFee() : 0.0);
+                + (includeSoapCheck != null && includeSoapCheck.isSelected() ? PricingConfig.getSoapFee() : 0.0)
+                + (includeDetergentCheck != null && includeDetergentCheck.isSelected() ? PricingConfig.getDetergentFee() : 0.0);
         priceEstimateLabel.setText(String.format("\u20B1%.2f", total));
     }
 
@@ -618,16 +706,18 @@ public class MainDashboard extends javax.swing.JFrame {
         String service = (String) serviceCombo.getSelectedItem();
         double qty = ((Number) quantitySpinner.getValue()).doubleValue();
         boolean includeSoap = includeSoapCheck.isSelected();
+        boolean includeDetergent = includeDetergentCheck.isSelected();
         String itemType = (String) itemTypeCombo.getSelectedItem();
 
         // In-memory order (drives the Dashboard/Orders tabs as before)
-        Order order = DataStore.addOrder(selected, service, qty, LocalDate.now(), includeSoap);
+        Order order = DataStore.addOrder(selected, service, qty, LocalDate.now(), includeSoap, includeDetergent);
         order.setItemType(itemType);
 
-        // Persist to MySQL with a fresh claim token, then show the QR code
-        // for that token so it can be given to the customer at drop-off.
+        // Persist to MySQL with a fresh claim token, then show the digital
+        // receipt (status, dates, itemized breakdown, QR) for pickup.
         String claimToken = QRCodeUtil.newClaimToken();
-        int dbId = DatabaseManager.insertOrder(selected.getName(), service, qty, order.getPrice(), claimToken);
+        int dbId = DatabaseManager.insertOrder(selected.getName(), selected.getPhone(), selected.getAddress(),
+                service, qty, order.getPrice(), claimToken, includeSoap, includeDetergent);
 
         if (dbId == -1) {
             JOptionPane.showMessageDialog(this,
@@ -636,13 +726,16 @@ public class MainDashboard extends javax.swing.JFrame {
                     "Database Error", JOptionPane.WARNING_MESSAGE);
         } else {
             order.setDbId(dbId); // keeps the displayed/QR'd ID matching the real MySQL row
-            showQrDialog(StatusServer.buildStatusUrl(claimToken), order.getDisplayId(), selected.getName());
+            showReceiptDialog(order.getDisplayId(), selected.getName(), selected.getPhone(), selected.getAddress(),
+                    order.getStatus(), order.getDropOffDate(), order.getClaimByDate(), order.getLineItems(),
+                    order.getPrice(), StatusServer.buildStatusUrl(claimToken));
         }
 
         refreshOrdersTable();
         refreshDashboard();
         jTabbedPane1.setSelectedIndex(2); // Orders & Claims
         includeSoapCheck.setSelected(false);
+        includeDetergentCheck.setSelected(false);
         itemTypeCombo.setSelectedIndex(0);
     }
 
@@ -1250,6 +1343,8 @@ public class MainDashboard extends javax.swing.JFrame {
         stack.add(card);
         stack.add(Box.createVerticalStrut(20));
         stack.add(createPricingAndItemsCard());
+        stack.add(Box.createVerticalStrut(20));
+        stack.add(createBrandingCard());
 
         JPanel wrapper = new JPanel(new FlowLayout(FlowLayout.LEFT));
         wrapper.setBackground(BG);
@@ -1304,11 +1399,15 @@ public class MainDashboard extends javax.swing.JFrame {
         JTextField dryCleanField = new JTextField(String.valueOf(PricingConfig.getRate("Dry Clean")), 8);
         JTextField ironOnlyField = new JTextField(String.valueOf(PricingConfig.getRate("Iron Only")), 8);
         JTextField soapFeeField = new JTextField(String.valueOf(PricingConfig.getSoapFee()), 8);
+        JTextField detergentFeeField = new JTextField(String.valueOf(PricingConfig.getDetergentFee()), 8);
+        JTextField claimWindowField = new JTextField(String.valueOf(PricingConfig.getClaimWindowDays()), 8);
 
         addPricingRow(ratesGrid, pgbc, 0, "Wash & Fold (per kilo):", washFoldField);
         addPricingRow(ratesGrid, pgbc, 1, "Dry Clean (per item):", dryCleanField);
         addPricingRow(ratesGrid, pgbc, 2, "Iron Only (per item):", ironOnlyField);
         addPricingRow(ratesGrid, pgbc, 3, "Soap add-on (flat fee):", soapFeeField);
+        addPricingRow(ratesGrid, pgbc, 4, "Detergent add-on (flat fee):", detergentFeeField);
+        addPricingRow(ratesGrid, pgbc, 5, "Claim window (days after drop-off):", claimWindowField);
 
         card.add(ratesGrid);
         card.add(Box.createVerticalStrut(8));
@@ -1328,15 +1427,21 @@ public class MainDashboard extends javax.swing.JFrame {
                 PricingConfig.setRate("Dry Clean", Double.parseDouble(dryCleanField.getText().trim()));
                 PricingConfig.setRate("Iron Only", Double.parseDouble(ironOnlyField.getText().trim()));
                 PricingConfig.setSoapFee(Double.parseDouble(soapFeeField.getText().trim()));
+                PricingConfig.setDetergentFee(Double.parseDouble(detergentFeeField.getText().trim()));
+                PricingConfig.setClaimWindowDays(Integer.parseInt(claimWindowField.getText().trim()));
                 pricingStatus.setText("Saved.");
                 pricingStatus.setForeground(new Color(39, 174, 96));
                 if (includeSoapCheck != null) {
                     includeSoapCheck.setText("Include Soap (+\u20B1"
                             + String.format("%.2f", PricingConfig.getSoapFee()) + ")");
                 }
+                if (includeDetergentCheck != null) {
+                    includeDetergentCheck.setText("Include Detergent (+\u20B1"
+                            + String.format("%.2f", PricingConfig.getDetergentFee()) + ")");
+                }
                 updatePriceEstimate();
             } catch (NumberFormatException ex) {
-                pricingStatus.setText("All prices must be numbers.");
+                pricingStatus.setText("All prices must be numbers (claim window must be a whole number).");
                 pricingStatus.setForeground(Color.RED);
             }
         });
@@ -1413,6 +1518,118 @@ public class MainDashboard extends javax.swing.JFrame {
         card.add(itemsAddRow);
 
         return card;
+    }
+
+    /**
+     * Settings card: laundry name and logo shown at the top of the digital
+     * receipt (both the desktop dialog after creating an order, and the
+     * matching web status page). Persisted via PricingConfig.
+     */
+    private JPanel createBrandingCard() {
+        JPanel card = new JPanel();
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        card.setBackground(Color.WHITE);
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(220, 220, 220)),
+                new EmptyBorder(20, 20, 20, 20)));
+        card.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel header = new JLabel("Receipt Branding");
+        header.setFont(new Font("SansSerif", Font.BOLD, 14));
+        header.setAlignmentX(Component.LEFT_ALIGNMENT);
+        card.add(header);
+        card.add(Box.createVerticalStrut(6));
+
+        JLabel explain = new JLabel("<html><body style='width:380px'>"
+                + "Shown at the top of every digital receipt -- the dialog after "
+                + "creating an order, and the matching web status page.</body></html>");
+        explain.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        explain.setForeground(new Color(120, 120, 120));
+        explain.setAlignmentX(Component.LEFT_ALIGNMENT);
+        card.add(explain);
+        card.add(Box.createVerticalStrut(10));
+
+        JPanel nameRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        nameRow.setBackground(Color.WHITE);
+        nameRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        nameRow.add(new JLabel("Laundry Name:"));
+        JTextField nameField = new JTextField(PricingConfig.getLaundryName(), 20);
+        nameRow.add(nameField);
+        card.add(nameRow);
+        card.add(Box.createVerticalStrut(10));
+
+        JPanel logoRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        logoRow.setBackground(Color.WHITE);
+        logoRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel logoPreview = new JLabel();
+        logoPreview.setPreferredSize(new Dimension(48, 48));
+        refreshLogoPreview(logoPreview);
+        logoRow.add(logoPreview);
+
+        JButton chooseLogoBtn = new JButton("Choose Logo...");
+        chooseLogoBtn.addActionListener(e -> {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter(
+                    "Image files", "png", "jpg", "jpeg"));
+            if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                PricingConfig.setLogoPath(chooser.getSelectedFile().getAbsolutePath());
+                refreshLogoPreview(logoPreview);
+            }
+        });
+        logoRow.add(chooseLogoBtn);
+
+        JButton clearLogoBtn = new JButton("Clear Logo");
+        clearLogoBtn.addActionListener(e -> {
+            PricingConfig.setLogoPath("");
+            refreshLogoPreview(logoPreview);
+        });
+        logoRow.add(clearLogoBtn);
+
+        card.add(logoRow);
+        card.add(Box.createVerticalStrut(10));
+
+        JLabel brandingStatus = new JLabel(" ");
+        brandingStatus.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        brandingStatus.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JButton saveBrandingBtn = new JButton("Save Branding");
+        saveBrandingBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+        saveBrandingBtn.setBackground(PRIMARY);
+        saveBrandingBtn.setForeground(Color.WHITE);
+        saveBrandingBtn.setFocusPainted(false);
+        saveBrandingBtn.addActionListener(e -> {
+            PricingConfig.setLaundryName(nameField.getText());
+            brandingStatus.setText("Saved.");
+            brandingStatus.setForeground(new Color(39, 174, 96));
+        });
+        card.add(saveBrandingBtn);
+        card.add(Box.createVerticalStrut(4));
+        card.add(brandingStatus);
+
+        return card;
+    }
+
+    private void refreshLogoPreview(JLabel logoPreview) {
+        String path = PricingConfig.getLogoPath();
+        if (path.isBlank()) {
+            logoPreview.setIcon(null);
+            logoPreview.setText("(no logo)");
+            return;
+        }
+        try {
+            java.awt.Image img = ImageIO.read(new java.io.File(path));
+            if (img != null) {
+                logoPreview.setText(null);
+                logoPreview.setIcon(new ImageIcon(img.getScaledInstance(48, 48, Image.SCALE_SMOOTH)));
+            } else {
+                logoPreview.setIcon(null);
+                logoPreview.setText("(invalid)");
+            }
+        } catch (Exception ex) {
+            logoPreview.setIcon(null);
+            logoPreview.setText("(invalid)");
+        }
     }
 
     private void addPricingRow(JPanel grid, GridBagConstraints gbc, int row, String label, JTextField field) {

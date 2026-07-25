@@ -4,7 +4,8 @@ import java.io.*;
 import java.util.*;
 
 /**
- * Holds editable pricing (per-service rates + soap fee) and a staff-managed
+ * Holds editable pricing (per-service rates + soap/detergent fees), receipt
+ * branding (laundry name + logo), the claim window, and a staff-managed
  * catalog of item types (e.g. "Clothes", "Hat", "Undergarments"). Persisted
  * to a plain properties file next to the app, same pattern as
  * laundry_settings.properties -- safe to delete to reset to defaults.
@@ -20,6 +21,10 @@ public class PricingConfig {
     private static double dryCleanRate = 150.0;  // per item
     private static double ironOnlyRate = 30.0;   // per item
     private static double soapFee = 20.0;         // flat add-on fee
+    private static double detergentFee = 15.0;    // flat add-on fee
+    private static int claimWindowDays = 7;       // days after drop-off the order can be claimed
+    private static String laundryName = "LAUNDRY NAME";
+    private static String logoPath = "";          // path to a local image file, blank = no logo
 
     private static final List<String> items = new ArrayList<>(
             Arrays.asList("Clothes", "Bedsheets", "Curtains"));
@@ -52,6 +57,42 @@ public class PricingConfig {
 
     public static void setSoapFee(double fee) {
         soapFee = fee;
+        save();
+    }
+
+    public static double getDetergentFee() {
+        return detergentFee;
+    }
+
+    public static void setDetergentFee(double fee) {
+        detergentFee = fee;
+        save();
+    }
+
+    public static int getClaimWindowDays() {
+        return claimWindowDays;
+    }
+
+    public static void setClaimWindowDays(int days) {
+        claimWindowDays = days;
+        save();
+    }
+
+    public static String getLaundryName() {
+        return laundryName;
+    }
+
+    public static void setLaundryName(String name) {
+        laundryName = (name == null || name.isBlank()) ? "LAUNDRY NAME" : name.trim();
+        save();
+    }
+
+    public static String getLogoPath() {
+        return logoPath;
+    }
+
+    public static void setLogoPath(String path) {
+        logoPath = path == null ? "" : path;
         save();
     }
 
@@ -90,6 +131,20 @@ public class PricingConfig {
         dryCleanRate = parseOrDefault(props.getProperty("dryCleanRate"), dryCleanRate);
         ironOnlyRate = parseOrDefault(props.getProperty("ironOnlyRate"), ironOnlyRate);
         soapFee = parseOrDefault(props.getProperty("soapFee"), soapFee);
+        detergentFee = parseOrDefault(props.getProperty("detergentFee"), detergentFee);
+
+        String claimDaysStr = props.getProperty("claimWindowDays");
+        if (claimDaysStr != null) {
+            try {
+                claimWindowDays = Integer.parseInt(claimDaysStr.trim());
+            } catch (NumberFormatException ignored) { }
+        }
+
+        String nameProp = props.getProperty("laundryName");
+        if (nameProp != null && !nameProp.isBlank()) {
+            laundryName = nameProp;
+        }
+        logoPath = props.getProperty("logoPath", logoPath);
 
         String itemsCsv = props.getProperty("items");
         if (itemsCsv != null && !itemsCsv.isBlank()) {
@@ -106,6 +161,10 @@ public class PricingConfig {
         props.setProperty("dryCleanRate", String.valueOf(dryCleanRate));
         props.setProperty("ironOnlyRate", String.valueOf(ironOnlyRate));
         props.setProperty("soapFee", String.valueOf(soapFee));
+        props.setProperty("detergentFee", String.valueOf(detergentFee));
+        props.setProperty("claimWindowDays", String.valueOf(claimWindowDays));
+        props.setProperty("laundryName", laundryName);
+        props.setProperty("logoPath", logoPath);
         props.setProperty("items", String.join("|", items)); // "|" -- item names won't contain it
 
         try (FileOutputStream out = new FileOutputStream(FILE)) {
