@@ -1,4 +1,4 @@
-SIMPLE LAUNDRY SYSTEM DASHBOARD - NetBeans Setup Guide
+LAUNDRY SYSTEM DASHBOARD - NetBeans Setup Guide
 ========================================================
 
 This is a Java Swing desktop application (no database required —
