@@ -3,6 +3,7 @@ Simple Laundry System Dashboard ni Vince at Amer (Login Form)
 User: LaundryShopStaff
 Pass: admin11
 
+Source code in src > main > > java > laundrysystem
 
 1. Asan yung file?
 A: nasa LaundrySystem > target > LaundrySystem-1.0-SNAPSHOT-jar-with-dependencies.jar // start.bat
@@ -15,7 +16,5 @@ A: it is an implementation of a Server-Side Rendering (SSR) function or Java-in-
 6. Anong QR scanner ang na dapat gamitin?
 A: Google Lens or any scanner in playstore
 --------------------------------------------------------------------------------------------------------------------------------------------
-
----------------------------------------------------------------------------------------------------------------------------------------------
 
 
