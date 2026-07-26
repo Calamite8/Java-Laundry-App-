@@ -48,7 +48,7 @@ public class MainDashboard extends javax.swing.JFrame {
     private JSpinner quantitySpinner;
     private JCheckBox includeSoapCheck;
     private JCheckBox includeDetergentCheck;
-    private JComboBox<String> itemTypeCombo;
+    private JList<String> itemTypeList;
     private JLabel quantityHintLabel;
     private JLabel priceEstimateLabel;
 
@@ -150,7 +150,7 @@ public class MainDashboard extends javax.swing.JFrame {
         jTabbedPane1.addChangeListener(e -> {
             refreshDashboard();
             refreshCustomerCombo();
-            refreshItemTypeCombo();
+            refreshItemTypeList();
         });
     }
 
@@ -541,16 +541,20 @@ public class MainDashboard extends javax.swing.JFrame {
         includeDetergentCheck.addActionListener(e -> updatePriceEstimate());
         form.add(includeDetergentCheck, gbc);
 
-        // Item type (staff-defined catalog, e.g. Clothes/Hat/Undergarments -- optional)
+        // Item types (staff-defined catalog, e.g. Clothes/Hat/Undergarments -- optional, multi-select)
         gbc.gridy = 8;
-        JLabel itemTypeLbl = new JLabel("Item Type (optional):");
+        JLabel itemTypeLbl = new JLabel("Item Types (optional, Ctrl/Shift-click for multiple):");
         itemTypeLbl.setFont(labelFont);
         form.add(itemTypeLbl, gbc);
 
         gbc.gridy = 9;
-        itemTypeCombo = new JComboBox<>();
-        refreshItemTypeCombo();
-        form.add(itemTypeCombo, gbc);
+        itemTypeList = new JList<>();
+        itemTypeList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        itemTypeList.setVisibleRowCount(4);
+        refreshItemTypeList();
+        JScrollPane itemTypeScroll = new JScrollPane(itemTypeList);
+        itemTypeScroll.setPreferredSize(new Dimension(200, 90));
+        form.add(itemTypeScroll, gbc);
 
         // Drop-off date (today, fixed)
         gbc.gridy = 10;
@@ -603,13 +607,15 @@ public class MainDashboard extends javax.swing.JFrame {
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttons.setBackground(BG);
-
+        /* --[[ Amer note ]]
         JButton addBtn = new JButton("Add Customer");
         addBtn.setBackground(PRIMARY);
         addBtn.setForeground(Color.WHITE);
-        addBtn.setFocusPainted(false);
+        addBtn.setFocusPainted(true);
         addBtn.addActionListener(e -> showAddCustomerDialog());
-
+        */
+        
+        
         JButton deleteBtn = new JButton("Delete Selected");
         deleteBtn.addActionListener(e -> {
             int row = customersTable.getSelectedRow();
@@ -634,7 +640,7 @@ public class MainDashboard extends javax.swing.JFrame {
             }
         });
 
-        buttons.add(addBtn);
+//      buttons.add(addBtn); --[[ Amer note ]]
         buttons.add(deleteBtn);
         panel.add(buttons, BorderLayout.SOUTH);
 
@@ -707,11 +713,11 @@ public class MainDashboard extends javax.swing.JFrame {
         double qty = ((Number) quantitySpinner.getValue()).doubleValue();
         boolean includeSoap = includeSoapCheck.isSelected();
         boolean includeDetergent = includeDetergentCheck.isSelected();
-        String itemType = (String) itemTypeCombo.getSelectedItem();
+        List<String> selectedItemTypes = itemTypeList.getSelectedValuesList();
 
         // In-memory order (drives the Dashboard/Orders tabs as before)
         Order order = DataStore.addOrder(selected, service, qty, LocalDate.now(), includeSoap, includeDetergent);
-        order.setItemType(itemType);
+        order.setItemTypes(selectedItemTypes);
 
         // Persist to MySQL with a fresh claim token, then show the digital
         // receipt (status, dates, itemized breakdown, QR) for pickup.
@@ -736,7 +742,7 @@ public class MainDashboard extends javax.swing.JFrame {
         jTabbedPane1.setSelectedIndex(2); // Orders & Claims
         includeSoapCheck.setSelected(false);
         includeDetergentCheck.setSelected(false);
-        itemTypeCombo.setSelectedIndex(0);
+        itemTypeList.clearSelection();
     }
 
     private void refreshCustomerCombo() {
@@ -752,17 +758,23 @@ public class MainDashboard extends javax.swing.JFrame {
     }
 
     /** Refreshes the New Order form's Item Type dropdown from PricingConfig's staff-managed catalog. */
-    private void refreshItemTypeCombo() {
-        if (itemTypeCombo == null) return;
-        String previouslySelected = (String) itemTypeCombo.getSelectedItem();
-        itemTypeCombo.removeAllItems();
-        itemTypeCombo.addItem(""); // blank = no specific item type
+    private void refreshItemTypeList() {
+        if (itemTypeList == null) return;
+        List<String> previouslySelected = itemTypeList.getSelectedValuesList();
+        DefaultListModel<String> model = new DefaultListModel<>();
         for (String item : PricingConfig.getItems()) {
-            itemTypeCombo.addItem(item);
+            model.addElement(item);
         }
-        if (previouslySelected != null) {
-            itemTypeCombo.setSelectedItem(previouslySelected);
+        itemTypeList.setModel(model);
+
+        // Re-select whatever's still valid after the catalog changed
+        List<Integer> indicesToSelect = new java.util.ArrayList<>();
+        for (String prev : previouslySelected) {
+            int idx = model.indexOf(prev);
+            if (idx != -1) indicesToSelect.add(idx);
         }
+        int[] indices = indicesToSelect.stream().mapToInt(Integer::intValue).toArray();
+        itemTypeList.setSelectedIndices(indices);
     }
 
     // ---------------------------------------------------------------
@@ -1501,7 +1513,7 @@ public class MainDashboard extends javax.swing.JFrame {
                 itemsListModel.addElement(item);
             }
             newItemField.setText("");
-            refreshItemTypeCombo();
+            refreshItemTypeList();
         });
         itemsAddRow.add(addItemBtn);
 
@@ -1511,7 +1523,7 @@ public class MainDashboard extends javax.swing.JFrame {
             if (selected == null) return;
             PricingConfig.removeItem(selected);
             itemsListModel.removeElement(selected);
-            refreshItemTypeCombo();
+            refreshItemTypeList();
         });
         itemsAddRow.add(removeItemBtn);
 

@@ -27,7 +27,7 @@ public class Order {
     private double price;
     private boolean includeSoap;
     private boolean includeDetergent;
-    private String itemType = ""; // staff-defined catalog item, e.g. "Clothes", "Hat" -- optional
+    private List<String> itemTypes = new ArrayList<>(); // staff-defined catalog items, e.g. "Clothes", "Hat" -- optional, multi-select
 
     // Set once this order has been saved to MySQL (see DatabaseManager.insertOrder).
     // -1 means "not yet saved to the database".
@@ -142,8 +142,14 @@ public class Order {
     public void setIncludeSoap(boolean includeSoap) { this.includeSoap = includeSoap; }
     public boolean isIncludeDetergent() { return includeDetergent; }
     public void setIncludeDetergent(boolean includeDetergent) { this.includeDetergent = includeDetergent; }
-    public String getItemType() { return itemType; }
-    public void setItemType(String itemType) { this.itemType = itemType == null ? "" : itemType; }
+    public List<String> getItemTypes() { return itemTypes; }
+    public void setItemTypes(List<String> itemTypes) {
+        this.itemTypes = itemTypes == null ? new ArrayList<>() : new ArrayList<>(itemTypes);
+    }
+    /** Comma-joined display string, e.g. "Clothes, Hat" -- empty string if none selected. */
+    public String getItemTypesDisplay() {
+        return String.join(", ", itemTypes);
+    }
 
     public boolean isCompleted() {
         return status.equals("Delivered");

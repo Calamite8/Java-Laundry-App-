@@ -16,7 +16,6 @@ laundrysystem\DatabaseManager.class
 laundrysystem\SignUp.class
 laundrysystem\StatusServer$ClaimHandler.class
 laundrysystem\ClaimPanel.class
-laundrysystem\Login$4.class
 laundrysystem\GoogleSheetsSync.class
 laundrysystem\SignUp$5.class
 laundrysystem\MainDashboard$2.class
