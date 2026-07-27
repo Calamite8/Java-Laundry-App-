@@ -265,8 +265,8 @@ public class MainDashboard extends javax.swing.JFrame {
                 return;
             }
             showReceiptDialog(record.id, record.customerName, record.customerPhone, record.customerAddress,
-                    record.status, record.dropOffDate, record.claimByDate, record.getLineItems(), record.price,
-                    StatusServer.buildStatusUrl(record.claimToken));
+                    record.status, record.dropOffDate, record.claimByDate, record.getItemTypesList(),
+                    record.getLineItems(), record.price, StatusServer.buildStatusUrl(record.claimToken));
         });
         card.add(generateBtn);
 
@@ -287,7 +287,8 @@ public class MainDashboard extends javax.swing.JFrame {
      */
     private void showReceiptDialog(int orderId, String customerName, String customerPhone, String customerAddress,
                                     String status, LocalDate dropOffDate, LocalDate claimByDate,
-                                    List<Order.LineItem> lineItems, double totalPrice, String qrContent) {
+                                    List<String> itemTypes, List<Order.LineItem> lineItems, double totalPrice,
+                                    String qrContent) {
         try {
             JPanel outer = new JPanel();
             outer.setLayout(new BoxLayout(outer, BoxLayout.Y_AXIS));
@@ -327,8 +328,13 @@ public class MainDashboard extends javax.swing.JFrame {
                     .append("<hr>")
                     .append("<b>USER:</b> ").append(escapeHtml(customerName)).append("<br>")
                     .append("<b>CONTACT:</b> ").append(escapeHtml(customerPhone.isBlank() ? "-" : customerPhone)).append("<br>")
-                    .append("<b>ADDRESS:</b> ").append(escapeHtml(customerAddress.isBlank() ? "-" : customerAddress))
-                    .append("<hr>")
+                    .append("<b>ADDRESS:</b> ").append(escapeHtml(customerAddress.isBlank() ? "-" : customerAddress));
+
+            if (itemTypes != null && !itemTypes.isEmpty()) {
+                html.append("<br><b>ITEMS:</b> ").append(escapeHtml(String.join(", ", itemTypes)));
+            }
+
+            html.append("<hr>")
                     .append("<b>ORDER DETAILS</b><table width='100%'>");
 
             int i = 1;
@@ -607,15 +613,14 @@ public class MainDashboard extends javax.swing.JFrame {
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttons.setBackground(BG);
-        /* --[[ Amer note ]]
+        /*
         JButton addBtn = new JButton("Add Customer");
         addBtn.setBackground(PRIMARY);
         addBtn.setForeground(Color.WHITE);
-        addBtn.setFocusPainted(true);
+        addBtn.setFocusPainted(false);
         addBtn.addActionListener(e -> showAddCustomerDialog());
+        
         */
-        
-        
         JButton deleteBtn = new JButton("Delete Selected");
         deleteBtn.addActionListener(e -> {
             int row = customersTable.getSelectedRow();
@@ -640,7 +645,7 @@ public class MainDashboard extends javax.swing.JFrame {
             }
         });
 
-//      buttons.add(addBtn); --[[ Amer note ]]
+//        buttons.add(addBtn);
         buttons.add(deleteBtn);
         panel.add(buttons, BorderLayout.SOUTH);
 
@@ -722,8 +727,9 @@ public class MainDashboard extends javax.swing.JFrame {
         // Persist to MySQL with a fresh claim token, then show the digital
         // receipt (status, dates, itemized breakdown, QR) for pickup.
         String claimToken = QRCodeUtil.newClaimToken();
+        String itemTypesCsv = String.join(",", selectedItemTypes);
         int dbId = DatabaseManager.insertOrder(selected.getName(), selected.getPhone(), selected.getAddress(),
-                service, qty, order.getPrice(), claimToken, includeSoap, includeDetergent);
+                service, qty, order.getPrice(), claimToken, includeSoap, includeDetergent, itemTypesCsv);
 
         if (dbId == -1) {
             JOptionPane.showMessageDialog(this,
@@ -733,8 +739,8 @@ public class MainDashboard extends javax.swing.JFrame {
         } else {
             order.setDbId(dbId); // keeps the displayed/QR'd ID matching the real MySQL row
             showReceiptDialog(order.getDisplayId(), selected.getName(), selected.getPhone(), selected.getAddress(),
-                    order.getStatus(), order.getDropOffDate(), order.getClaimByDate(), order.getLineItems(),
-                    order.getPrice(), StatusServer.buildStatusUrl(claimToken));
+                    order.getStatus(), order.getDropOffDate(), order.getClaimByDate(), order.getItemTypes(),
+                    order.getLineItems(), order.getPrice(), StatusServer.buildStatusUrl(claimToken));
         }
 
         refreshOrdersTable();

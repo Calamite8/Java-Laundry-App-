@@ -169,6 +169,11 @@ public class StatusServer {
                     ? ""
                     : "<img src='/logo' style='max-width:70px;max-height:70px;display:block;margin:0 auto 8px;'>";
 
+            java.util.List<String> itemTypesList = order.getItemTypesList();
+            String itemsLine = itemTypesList.isEmpty()
+                    ? ""
+                    : "<br><b>ITEMS:</b> " + escape(String.join(", ", itemTypesList));
+
             return "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
                     + "<meta name='viewport' content='width=device-width, initial-scale=1'>"
                     + "<title>Digital Receipt</title>"
@@ -193,6 +198,7 @@ public class StatusServer {
                     + "<b>USER:</b> " + escape(order.customerName) + "<br>"
                     + "<b>CONTACT:</b> " + escape(order.customerPhone.isBlank() ? "-" : order.customerPhone) + "<br>"
                     + "<b>ADDRESS:</b> " + escape(order.customerAddress.isBlank() ? "-" : order.customerAddress)
+                    + itemsLine
                     + "<hr>"
                     + "<b>ORDER DETAILS</b>"
                     + "<table>" + itemsHtml + "</table>"

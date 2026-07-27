@@ -245,7 +245,7 @@ public class DatabaseManager {
      */
     public static int insertOrder(String customerName, String customerPhone, String customerAddress,
                                    String serviceType, double quantity, double price, String claimToken,
-                                   boolean includeSoap, boolean includeDetergent) {
+                                   boolean includeSoap, boolean includeDetergent, String itemTypes) {
         LocalDate dropOffDate = LocalDate.now();
         LocalDate claimByDate = dropOffDate.plusDays(PricingConfig.getClaimWindowDays());
 
@@ -253,14 +253,14 @@ public class DatabaseManager {
             int fakeId = fakeIdCounter++;
             fakeStore.put(fakeId, new OrderRecord(fakeId, customerName, customerPhone, customerAddress,
                     serviceType, quantity, price, "Pending", false, claimToken,
-                    dropOffDate, claimByDate, includeSoap, includeDetergent));
+                    dropOffDate, claimByDate, includeSoap, includeDetergent, itemTypes));
             saveLocalStoreIfEnabled();
             return fakeId;
         }
 
         String sql = "INSERT INTO orders (customer_name, customer_phone, customer_address, service_type, "
-                + "quantity, price, claim_token, claim_by_date, include_soap, include_detergent) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                + "quantity, price, claim_token, claim_by_date, include_soap, include_detergent, item_types) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = getConnection().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, customerName);
             ps.setString(2, customerPhone);
@@ -272,6 +272,7 @@ public class DatabaseManager {
             ps.setDate(8, java.sql.Date.valueOf(claimByDate));
             ps.setBoolean(9, includeSoap);
             ps.setBoolean(10, includeDetergent);
+            ps.setString(11, itemTypes);
             ps.executeUpdate();
 
             try (ResultSet keys = ps.getGeneratedKeys()) {
@@ -307,7 +308,7 @@ public class DatabaseManager {
         }
 
         String sql = "SELECT id, customer_name, customer_phone, customer_address, service_type, quantity, "
-                + "status, created_at, include_soap, include_detergent FROM orders ORDER BY id";
+                + "status, created_at, include_soap, include_detergent, item_types FROM orders ORDER BY id";
         try (PreparedStatement ps = getConnection().prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
 
@@ -330,6 +331,7 @@ public class DatabaseManager {
                         rs.getBoolean("include_soap"), rs.getBoolean("include_detergent"));
                 order.setDbId(dbOrderId);
                 order.setStatus(rs.getString("status"));
+                order.setItemTypes(splitItemTypes(rs.getString("item_types")));
             }
         } catch (SQLException e) {
             System.err.println("loadOrdersToDataStore failed (orders will still work, "
@@ -358,7 +360,17 @@ public class DatabaseManager {
                     r.includeSoap, r.includeDetergent);
             order.setDbId(r.id);
             order.setStatus(r.status);
+            order.setItemTypes(r.getItemTypesList());
         }
+    }
+
+    private static java.util.List<String> splitItemTypes(String itemTypes) {
+        if (itemTypes == null || itemTypes.isBlank()) return java.util.List.of();
+        java.util.List<String> list = new java.util.ArrayList<>();
+        for (String s : itemTypes.split(",")) {
+            if (!s.isBlank()) list.add(s.trim());
+        }
+        return list;
     }
 
     private static Customer findOrCreateCustomerByName(String name, String phone, String address) {
@@ -380,7 +392,7 @@ public class DatabaseManager {
         }
 
         String sql = "SELECT id, customer_name, customer_phone, customer_address, service_type, quantity, "
-                + "price, status, claimed, claim_token, created_at, claim_by_date, include_soap, include_detergent "
+                + "price, status, claimed, claim_token, created_at, claim_by_date, include_soap, include_detergent, item_types "
                 + "FROM orders WHERE id = ?";
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
             ps.setInt(1, orderId);
@@ -409,7 +421,7 @@ public class DatabaseManager {
         }
 
         String sql = "SELECT id, customer_name, customer_phone, customer_address, service_type, quantity, "
-                + "price, status, claimed, claim_token, created_at, claim_by_date, include_soap, include_detergent "
+                + "price, status, claimed, claim_token, created_at, claim_by_date, include_soap, include_detergent, item_types "
                 + "FROM orders WHERE claim_token = ?";
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
             ps.setString(1, token);
@@ -446,7 +458,8 @@ public class DatabaseManager {
                 dropOffDate,
                 claimBy,
                 rs.getBoolean("include_soap"),
-                rs.getBoolean("include_detergent")
+                rs.getBoolean("include_detergent"),
+                rs.getString("item_types")
         );
     }
 
@@ -463,7 +476,7 @@ public class DatabaseManager {
             if (r == null) return false;
             fakeStore.put(orderId, new OrderRecord(r.id, customerName, r.customerPhone, r.customerAddress,
                     serviceType, quantity, price, r.status, r.claimed, r.claimToken,
-                    r.dropOffDate, r.claimByDate, r.includeSoap, r.includeDetergent));
+                    r.dropOffDate, r.claimByDate, r.includeSoap, r.includeDetergent, r.itemTypes));
             saveLocalStoreIfEnabled();
             return true;
         }
@@ -495,7 +508,7 @@ public class DatabaseManager {
             if (r == null) return false;
             fakeStore.put(orderId, new OrderRecord(r.id, r.customerName, r.customerPhone, r.customerAddress,
                     r.serviceType, r.quantity, r.price, status, r.claimed, r.claimToken,
-                    r.dropOffDate, r.claimByDate, r.includeSoap, r.includeDetergent));
+                    r.dropOffDate, r.claimByDate, r.includeSoap, r.includeDetergent, r.itemTypes));
             saveLocalStoreIfEnabled();
             return true;
         }
@@ -521,7 +534,7 @@ public class DatabaseManager {
             if (r == null || r.claimed) return false;
             fakeStore.put(orderId, new OrderRecord(r.id, r.customerName, r.customerPhone, r.customerAddress,
                     r.serviceType, r.quantity, r.price, "Delivered", true, r.claimToken,
-                    r.dropOffDate, r.claimByDate, r.includeSoap, r.includeDetergent));
+                    r.dropOffDate, r.claimByDate, r.includeSoap, r.includeDetergent, r.itemTypes));
             saveLocalStoreIfEnabled();
             return true;
         }
@@ -573,7 +586,7 @@ public class DatabaseManager {
      * the receipt (both the desktop dialog and the web status page).
      */
     public static class OrderRecord implements Serializable {
-        private static final long serialVersionUID = 2L;
+        private static final long serialVersionUID = 3L;
         public final int id;
         public final String customerName;
         public final String customerPhone;
@@ -588,11 +601,12 @@ public class DatabaseManager {
         public final LocalDate claimByDate;
         public final boolean includeSoap;
         public final boolean includeDetergent;
+        public final String itemTypes; // comma-joined, e.g. "Clothes,Bedsheets" -- empty string if none
 
         public OrderRecord(int id, String customerName, String customerPhone, String customerAddress,
                             String serviceType, double quantity, double price, String status, boolean claimed,
                             String claimToken, LocalDate dropOffDate, LocalDate claimByDate,
-                            boolean includeSoap, boolean includeDetergent) {
+                            boolean includeSoap, boolean includeDetergent, String itemTypes) {
             this.id = id;
             this.customerName = customerName;
             this.customerPhone = customerPhone;
@@ -607,6 +621,17 @@ public class DatabaseManager {
             this.claimByDate = claimByDate;
             this.includeSoap = includeSoap;
             this.includeDetergent = includeDetergent;
+            this.itemTypes = itemTypes == null ? "" : itemTypes;
+        }
+
+        /** Comma-joined string back into a list, e.g. for display as "Clothes, Bedsheets". */
+        public java.util.List<String> getItemTypesList() {
+            if (itemTypes.isBlank()) return java.util.List.of();
+            java.util.List<String> list = new java.util.ArrayList<>();
+            for (String s : itemTypes.split(",")) {
+                if (!s.isBlank()) list.add(s.trim());
+            }
+            return list;
         }
 
         /**
