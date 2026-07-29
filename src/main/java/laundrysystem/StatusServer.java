@@ -53,7 +53,11 @@ public class StatusServer {
     // useful for testing today, but the free ngrok URL changes every time
     // you restart the tunnel, so it's not something to print on QR codes
     // for real, ongoing customer use. See the permanent setup notes for that.
-    private static String BASE_URL = "https://ratably-untreed-isaias.ngrok-free.dev";
+    //
+    // This now loads from DomainConfig (Settings tab -> Web Status Domain)
+    // instead of a hardcoded literal, so it survives restarts and doesn't
+    // need editing in source anymore -- set it from the Settings tab.
+    private static String BASE_URL = DomainConfig.getCurrentDomain();
 
     private static HttpServer server;
 
@@ -126,9 +130,14 @@ public class StatusServer {
         return BASE_URL + "/claim?token=" + claimToken + "&ngrok-skip-browser-warning=true";
     }
 
-    /** Lets MainDashboard override the default localhost address at startup, e.g. to the LAN IP. */
+    /**
+     * Sets the active domain/base URL and persists it via DomainConfig
+     * (including history), so it survives an app restart -- set from the
+     * Settings tab's "Web Status Domain" card instead of editing source.
+     */
     public static void setBaseUrl(String baseUrl) {
         BASE_URL = baseUrl;
+        DomainConfig.setCurrentDomain(baseUrl);
     }
 
     // -----------------------------------------------------------------

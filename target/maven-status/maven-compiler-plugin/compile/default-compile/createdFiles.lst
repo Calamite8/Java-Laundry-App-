@@ -29,6 +29,7 @@ laundrysystem\DataStore.class
 laundrysystem\LoginAndSignUp.class
 laundrysystem\Order.class
 laundrysystem\DatabaseManager$LocalData.class
+laundrysystem\DomainConfig.class
 laundrysystem\Login$2.class
 laundrysystem\StatusServer$StatusHandler.class
 laundrysystem\DatabaseManager$OrderRecord.class

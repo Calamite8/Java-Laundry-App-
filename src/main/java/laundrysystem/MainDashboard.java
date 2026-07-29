@@ -613,14 +613,13 @@ public class MainDashboard extends javax.swing.JFrame {
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttons.setBackground(BG);
-        /*
+
         JButton addBtn = new JButton("Add Customer");
         addBtn.setBackground(PRIMARY);
         addBtn.setForeground(Color.WHITE);
         addBtn.setFocusPainted(false);
         addBtn.addActionListener(e -> showAddCustomerDialog());
-        
-        */
+
         JButton deleteBtn = new JButton("Delete Selected");
         deleteBtn.addActionListener(e -> {
             int row = customersTable.getSelectedRow();
@@ -645,7 +644,7 @@ public class MainDashboard extends javax.swing.JFrame {
             }
         });
 
-//        buttons.add(addBtn);
+        buttons.add(addBtn);
         buttons.add(deleteBtn);
         panel.add(buttons, BorderLayout.SOUTH);
 
@@ -1354,19 +1353,32 @@ public class MainDashboard extends javax.swing.JFrame {
         logoutBtn.addActionListener(e -> onLogout());
         card.add(logoutBtn);
 
-        JPanel stack = new JPanel();
-        stack.setLayout(new BoxLayout(stack, BoxLayout.Y_AXIS));
-        stack.setBackground(BG);
-        stack.setAlignmentX(Component.LEFT_ALIGNMENT);
-        stack.add(card);
-        stack.add(Box.createVerticalStrut(20));
-        stack.add(createPricingAndItemsCard());
-        stack.add(Box.createVerticalStrut(20));
-        stack.add(createBrandingCard());
+        JPanel leftColumn = new JPanel();
+        leftColumn.setLayout(new BoxLayout(leftColumn, BoxLayout.Y_AXIS));
+        leftColumn.setBackground(BG);
+        leftColumn.setAlignmentY(Component.TOP_ALIGNMENT);
+        leftColumn.add(card);
+        leftColumn.add(Box.createVerticalStrut(20));
+        leftColumn.add(createPricingAndItemsCard());
+        leftColumn.add(Box.createVerticalStrut(20));
+        leftColumn.add(createBrandingCard());
+
+        JPanel rightColumn = new JPanel();
+        rightColumn.setLayout(new BoxLayout(rightColumn, BoxLayout.Y_AXIS));
+        rightColumn.setBackground(BG);
+        rightColumn.setAlignmentY(Component.TOP_ALIGNMENT);
+        rightColumn.add(createDomainCard());
+
+        JPanel columns = new JPanel();
+        columns.setLayout(new BoxLayout(columns, BoxLayout.X_AXIS));
+        columns.setBackground(BG);
+        columns.add(leftColumn);
+        columns.add(Box.createHorizontalStrut(20));
+        columns.add(rightColumn);
 
         JPanel wrapper = new JPanel(new FlowLayout(FlowLayout.LEFT));
         wrapper.setBackground(BG);
-        wrapper.add(stack);
+        wrapper.add(columns);
 
         JScrollPane scrollPane = new JScrollPane(wrapper);
         scrollPane.setBorder(null);
@@ -1374,6 +1386,124 @@ public class MainDashboard extends javax.swing.JFrame {
         panel.add(scrollPane, BorderLayout.CENTER);
 
         return panel;
+    }
+
+    /**
+     * Settings card (right column): the custom domain/base URL embedded in
+     * every QR code for the web status/claim pages -- e.g. an ngrok domain
+     * or a LAN IP:port. "Set Permanently" persists it via DomainConfig so
+     * it survives an app restart, and keeps a short history of previously
+     * used domains so staff can switch back without retyping.
+     */
+    private JPanel createDomainCard() {
+        JPanel card = new JPanel();
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        card.setBackground(Color.WHITE);
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(220, 220, 220)),
+                new EmptyBorder(20, 20, 20, 20)));
+        card.setAlignmentX(Component.LEFT_ALIGNMENT);
+        card.setPreferredSize(new Dimension(320, 360));
+
+        JLabel header = new JLabel("Web Status Domain");
+        header.setFont(new Font("SansSerif", Font.BOLD, 14));
+        header.setAlignmentX(Component.LEFT_ALIGNMENT);
+        card.add(header);
+        card.add(Box.createVerticalStrut(6));
+
+        JLabel explain = new JLabel("<html><body style='width:260px'>"
+                + "The address embedded in every QR code (status + claim pages). "
+                + "E.g. an ngrok domain like <i>your-name.ngrok-free.dev</i>, or a "
+                + "LAN address like <i>192.168.1.50:8080</i>.</body></html>");
+        explain.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        explain.setForeground(new Color(120, 120, 120));
+        explain.setAlignmentX(Component.LEFT_ALIGNMENT);
+        card.add(explain);
+        card.add(Box.createVerticalStrut(10));
+
+        JLabel currentLabel = new JLabel("Current: " + DomainConfig.getCurrentDomain());
+        currentLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        currentLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        card.add(currentLabel);
+        card.add(Box.createVerticalStrut(8));
+
+        JTextField domainField = new JTextField(DomainConfig.getCurrentDomain());
+        domainField.setAlignmentX(Component.LEFT_ALIGNMENT);
+        domainField.setMaximumSize(new Dimension(280, 28));
+        card.add(domainField);
+        card.add(Box.createVerticalStrut(8));
+
+        JLabel domainStatus = new JLabel(" ");
+        domainStatus.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        domainStatus.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JButton setPermanentBtn = new JButton("Set Permanently");
+        setPermanentBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+        setPermanentBtn.setBackground(PRIMARY);
+        setPermanentBtn.setForeground(Color.WHITE);
+        setPermanentBtn.setFocusPainted(false);
+
+        card.add(setPermanentBtn);
+        card.add(Box.createVerticalStrut(4));
+        card.add(domainStatus);
+        card.add(Box.createVerticalStrut(16));
+
+        JSeparator separator = new JSeparator();
+        separator.setAlignmentX(Component.LEFT_ALIGNMENT);
+        separator.setMaximumSize(new Dimension(280, 1));
+        card.add(separator);
+        card.add(Box.createVerticalStrut(12));
+
+        JLabel historyHeader = new JLabel("Previous Domains");
+        historyHeader.setFont(new Font("SansSerif", Font.BOLD, 13));
+        historyHeader.setAlignmentX(Component.LEFT_ALIGNMENT);
+        card.add(historyHeader);
+        card.add(Box.createVerticalStrut(6));
+
+        DefaultListModel<String> historyModel = new DefaultListModel<>();
+        for (String d : DomainConfig.getHistory()) {
+            historyModel.addElement(d);
+        }
+        JList<String> historyList = new JList<>(historyModel);
+        historyList.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        JScrollPane historyScroll = new JScrollPane(historyList);
+        historyScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
+        historyScroll.setMaximumSize(new Dimension(280, 130));
+        historyScroll.setPreferredSize(new Dimension(280, 130));
+        card.add(historyScroll);
+        card.add(Box.createVerticalStrut(8));
+
+        JButton useSelectedBtn = new JButton("Use Selected");
+        useSelectedBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+        useSelectedBtn.addActionListener(e -> {
+            String selected = historyList.getSelectedValue();
+            if (selected == null) {
+                JOptionPane.showMessageDialog(this, "Select a domain from the list first.");
+                return;
+            }
+            domainField.setText(selected);
+        });
+        card.add(useSelectedBtn);
+
+        // Wired after historyModel/domainField exist, so it can refresh both.
+        setPermanentBtn.addActionListener(e -> {
+            String domain = domainField.getText().trim();
+            if (domain.isEmpty()) {
+                domainStatus.setText("Enter a domain first.");
+                domainStatus.setForeground(Color.RED);
+                return;
+            }
+            StatusServer.setBaseUrl(domain);
+            currentLabel.setText("Current: " + domain);
+            historyModel.clear();
+            for (String d : DomainConfig.getHistory()) {
+                historyModel.addElement(d);
+            }
+            domainStatus.setText("Saved -- new QR codes will use this domain.");
+            domainStatus.setForeground(new Color(39, 174, 96));
+        });
+
+        return card;
     }
 
     /**
