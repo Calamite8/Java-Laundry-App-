@@ -78,28 +78,50 @@
                 </configuration>
             </plugin>
 
-            <!-- Packages your Main class and ALL external dependencies into an executable JAR -->
+            <!--
+              Packages Main and ALL external dependencies into one executable jar.
+
+              Using shade instead of assembly here on purpose: assembly's default
+              merge silently drops META-INF/services files when more than one
+              dependency defines one at the same path. Both the MySQL driver
+              (java.sql.Driver auto-registration) and the Google auth libraries
+              rely on that mechanism via ServiceLoader, so an assembly-built jar
+              can run fine under exec:java (classpath, no merging involved) and
+              then mysteriously fail to find the MySQL driver, or fail auth
+              provider lookups, once packaged. The ServicesResourceTransformer
+              below merges those files correctly instead of overwriting them.
+            -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-assembly-plugin</artifactId>
-                <version>3.7.1</version>
-                <configuration>
-                    <descriptorRefs>
-                        <descriptorRef>jar-with-dependencies</descriptorRef>
-                    </descriptorRefs>
-                    <archive>
-                        <manifest>
-                            <mainClass>${exec.mainClass}</mainClass>
-                        </manifest>
-                    </archive>
-                </configuration>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.6.0</version>
                 <executions>
                     <execution>
-                        <id>make-assembly</id>
                         <phase>package</phase>
                         <goals>
-                            <goal>single</goal>
+                            <goal>shade</goal>
                         </goals>
+                        <configuration>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>${exec.mainClass}</mainClass>
+                                </transformer>
+                            </transformers>
+                            <filters>
+                                <!-- google-api-client / google-auth transitively pull in signed jars;
+                                     leaving their signature files in a merged jar throws
+                                     "Invalid signature file digest" at runtime. Strip them. -->
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
